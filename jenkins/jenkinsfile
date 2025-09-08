@@ -1,0 +1,62 @@
+pipeline {
+    agent any
+
+    tools {
+        jdk 'java21'           // Use the name you configured in Jenkins
+        maven 'maven3'         // Use your configured Maven version
+    }
+
+    environment {
+        SONARQUBE_SERVER = 'MySonarQube'   // Replace with your actual SonarQube server name
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn clean install'
+            }
+        }
+
+        stage('Code Coverage (Cobertura)') {
+            steps {
+                sh 'mvn cobertura:cobertura'
+            }
+            post {
+                always {
+                    cobertura autoUpdateHealth: false, autoUpdateStability: false, coberturaReportFile: '**/target/site/cobertura/coverage.xml', failNoReports: true, lineCoverageTargets: '80, 60, 50', methodCoverageTargets: '80, 60, 50'
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                    sh 'mvn sonar:sonar'
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 1, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Build and analysis completed successfully!'
+        }
+        failure {
+            echo 'Build failed!'
+        }
+    }
+}
